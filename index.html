@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="gu">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Finance Pro Manager</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root { --primary: #2c3e50; --secondary: #27ae60; --danger: #e74c3c; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background:#f4f7f6; padding:10px; color: #333; margin:0; }
+    h2 { text-align: center; color: var(--primary); margin-top: 10px; }
+    .box { background:white; padding:15px; margin-bottom:15px; border-radius:12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    label { font-weight: bold; display: block; margin-bottom: 5px; font-size: 14px; }
+    input, select { padding:12px; margin-bottom:12px; width:100%; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+    button { padding:12px; width:100%; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; margin-bottom: 10px; }
+    .btn-add { background: var(--secondary); color: white; }
+    .btn-export { background: #3498db; color: white; }
+    .btn-backup { background: #9b59b6; color: white; }
+    .btn-delete { background: var(--danger); color: white; padding: 5px 10px; font-size: 12px; width: auto; }
+    .stats { display: flex; justify-content: space-between; text-align: center; }
+    .stats div { flex: 1; }
+    .stats h3 { margin: 5px 0; font-size: 18px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+    th { background: var(--primary); color: white; }
+    tr:nth-child(even) { background: #f9f9f9; }
+    .chart-container { position: relative; height:250px; width:100%; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+
+<h2>💰 My Expense Diary</h2>
+
+<div class="box">
+  <div class="stats">
+    <div>
+      <label>Balance</label>
+      <h3 style="color:var(--secondary)">₹ <span id="balance">0</span></h3>
+    </div>
+    <div>
+      <label>Expense</label>
+      <h3 style="color:var(--danger)">₹ <span id="totalExpense">0</span></h3>
+    </div>
+  </div>
+</div>
+
+<div class="box">
+  <label>Add New Entry</label>
+  <input type="date" id="date">
+  <input type="text" id="incomeSource" placeholder="Source (Salary, Bonus etc.)">
+  <input type="number" id="amount" placeholder="Income Amount ₹">
+  <input type="number" id="expense" placeholder="Expense Amount ₹">
+  
+  <select id="expenseType" onchange="checkOther()">
+    <option value="General">General</option>
+    <option value="Milk">Milk</option>
+    <option value="Petrol">Petrol</option>
+    <option value="Grocery">Grocery</option>
+    <option value="Light Bill">Light Bill</option>
+    <option value="EMI">EMI</option>
+    <option value="Food">Food</option>
+    <option value="Other">Other (Custom)</option>
+  </select>
+  <input type="text" id="customType" placeholder="Enter Category Name" style="display:none;">
+  
+  <button class="btn-add" onclick="addData()">➕ Add to Diary</button>
+</div>
+
+<div class="box">
+  <label>Filter & Search</label>
+  <input type="month" id="monthFilter" onchange="render()">
+  <input type="text" id="search" placeholder="Search by name or type..." onkeyup="render()">
+</div>
+
+<div class="box">
+  <div class="chart-container"><canvas id="incomeExpenseChart"></canvas></div>
+  <div class="chart-container"><canvas id="categoryChart"></canvas></div>
+</div>
+
+<div class="box" style="overflow-x:auto;">
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th><th>Name</th><th>In</th><th>Out</th><th>Type</th><th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="tableData"></tbody>
+  </table>
+</div>
+
+<div class="box">
+  <button class="btn-export" onclick="exportCSV()">📤 Export to Excel (CSV)</button>
+  <button class="btn-backup" onclick="backupData()">☁ Download Backup (.json)</button>
+  <label>Restore from Backup:</label>
+  <input type="file" id="fileInput" onchange="restoreData(event)">
+</div>
+
+<script>
+let data = JSON.parse(localStorage.getItem("financeData")) || [];
+
+// Set default date to today
+document.getElementById('date').valueAsDate = new Date();
+
+function save() {
+  localStorage.setItem("financeData", JSON.stringify(data));
+}
+
+function checkOther() {
+  document.getElementById('customType').style.display = (document.getElementById('expenseType').value === "Other") ? "block" : "none";
+}
+
+function addData() {
+  const dateVal = document.getElementById('date').value;
+  const sourceVal = document.getElementById('incomeSource').value || "General";
+  const amountVal = Number(document.getElementById('amount').value) || 0;
+  const expenseVal = Number(document.getElementById('expense').value) || 0;
+  let typeVal = document.getElementById('expenseType').value;
+  
+  if(typeVal === "Other") typeVal = document.getElementById('customType').value || "Other";
+
+  if(!dateVal) { alert("તારીખ પસંદ કરો!"); return; }
+
+  data.push({
+    id: Date.now(),
+    date: dateVal,
+    source: sourceVal,
+    amount: amountVal,
+    expense: expenseVal,
+    type: typeVal
+  });
+
+  save();
+  render();
+  
+  // Clear inputs
+  document.getElementById('incomeSource').value = "";
+  document.getElementById('amount').value = "";
+  document.getElementById('expense').value = "";
+}
+
+function deleteEntry(id) {
+  if(confirm("શું તમે આ એન્ટ્રી કાઢી નાખવા માંગો છો?")) {
+    data = data.filter(item => item.id !== id);
+    save();
+    render();
+  }
+}
+
+function render() {
+  let totalIncome = 0, totalExp = 0;
+  let categoryData = {};
+  const month = document.getElementById('monthFilter').value;
+  const searchVal = document.getElementById('search').value.toLowerCase();
+  const tableBody = document.getElementById('tableData');
+  
+  tableBody.innerHTML = "";
+
+  // Sort data by date (newest first)
+  const sortedData = [...data].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  sortedData.forEach(d => {
+    if(month && !d.date.startsWith(month)) return;
+    if(searchVal && !d.source.toLowerCase().includes(searchVal) && !d.type.toLowerCase().includes(searchVal)) return;
+
+    totalIncome += d.amount;
+    totalExp += d.expense;
+
+    if(d.expense > 0) {
+      categoryData[d.type] = (categoryData[d.type] || 0) + d.expense;
+    }
+
+    tableBody.innerHTML += `
+    <tr>
+      <td>${d.date.split('-').reverse().join('/')}</td>
+      <td>${d.source}</td>
+      <td style="color:green">${d.amount}</td>
+      <td style="color:red">${d.expense}</td>
+      <td>${d.type}</td>
+      <td><button class="btn-delete" onclick="deleteEntry(${d.id})">❌</button></td>
+    </tr>`;
+  });
+
+  document.getElementById('totalExpense').innerText = totalExp;
+  document.getElementById('balance').innerText = totalIncome - totalExp;
+
+  updateCharts(totalIncome, totalExp, categoryData);
+}
+
+// Charts Initialization
+const ctx1 = document.getElementById('incomeExpenseChart').getContext('2d');
+let incomeChart = new Chart(ctx1, {
+  type: 'doughnut',
+  data: {
+    labels: ['Income', 'Expense'],
+    datasets: [{ data: [0, 0], backgroundColor: ['#27ae60', '#e74c3c'] }]
+  },
+  options: { maintainAspectRatio: false }
+});
+
+const ctx2 = document.getElementById('categoryChart').getContext('2d');
+let categoryChart = new Chart(ctx2, {
+  type: 'bar',
+  data: {
+    labels: [],
+    datasets: [{ label: 'Expense by Category', data: [], backgroundColor: '#3498db' }]
+  },
+  options: { maintainAspectRatio: false }
+});
+
+function updateCharts(income, expense, categories) {
+  incomeChart.data.datasets[0].data = [income, expense];
+  incomeChart.update();
+
+  categoryChart.data.labels = Object.keys(categories);
+  categoryChart.data.datasets[0].data = Object.values(categories);
+  categoryChart.update();
+}
+
+function exportCSV() {
+  let csv = "\uFEFFDate,Source,Income,Expense,Type\n";
+  data.forEach(d => { csv += `${d.date},${d.source},${d.amount},${d.expense},${d.type}\n`; });
+  let blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  let link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "My_Finance_Data.csv";
+  link.click();
+}
+
+function backupData() {
+  let blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  let link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "Finance_Backup_" + new Date().toLocaleDateString() + ".json";
+  link.click();
+}
+
+function restoreData(e) {
+  let file = e.target.files[0];
+  if (!file) return;
+  let reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      data = JSON.parse(e.target.result);
+      save();
+      render();
+      alert("ડેટા સફળતાપૂર્વક રિસ્ટોર થયો!");
+    } catch (err) { alert("ખોટી ફાઇલ!"); }
+  };
+  reader.readAsText(file);
+}
+
+render();
+</script>
+</body>
+</html>
