@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Finance Pro Manager</title>
   <link rel="manifest" href="manifest.json">
+  
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root { --primary: #2c3e50; --secondary: #27ae60; --danger: #e74c3c; --info: #3498db; }
@@ -16,21 +20,19 @@
     button { padding:12px; width:100%; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; margin-bottom: 10px; }
     .btn-add { background: var(--secondary); color: white; }
     .btn-export { background: var(--info); color: white; }
-    .btn-backup { background: #9b59b6; color: white; }
-    .btn-clear { background: var(--danger); color: white; font-size: 14px; }
     .btn-delete { background: var(--danger); color: white; padding: 5px 10px; font-size: 12px; width: auto; }
     .stats { display: flex; justify-content: space-between; text-align: center; }
     .stats div { flex: 1; }
-    .stats h3 { margin: 5px 0; font-size: 18px; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
     th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
     th { background: var(--primary); color: white; }
     .chart-container { position: relative; height:250px; width:100%; margin-bottom: 20px; }
+    .loading-text { text-align: center; color: #7f8c8d; font-style: italic; margin-bottom: 10px; }
   </style>
 </head>
 <body>
 
-<h2>💰 My Expense Diary</h2>
+<h2>💰 My Cloud Diary</h2>
 
 <div class="box">
   <div class="stats">
@@ -40,11 +42,11 @@
 </div>
 
 <div class="box">
-  <label>Add New Entry</label>
+  <label>નવી એન્ટ્રી</label>
   <input type="date" id="date">
-  <input type="text" id="incomeSource" placeholder="Source Name">
-  <input type="number" id="amount" placeholder="Income ₹">
-  <input type="number" id="expense" placeholder="Expense ₹">
+  <input type="text" id="incomeSource" placeholder="વિગત">
+  <input type="number" id="amount" placeholder="આવક (Income) ₹">
+  <input type="number" id="expense" placeholder="ખર્ચ (Expense) ₹">
   <select id="expenseType" onchange="checkOther()">
     <option value="General">General</option>
     <option value="Milk">Milk</option>
@@ -56,21 +58,22 @@
     <option value="Postpaid">Postpaid</option>
     <option value="Other">Other</option>
   </select>
-  <input type="text" id="customType" placeholder="Category Name" style="display:none;">
-  <button class="btn-add" onclick="addData()">➕ Add Entry</button>
+  <input type="text" id="customType" placeholder="કેટેગરીનું નામ" style="display:none;">
+  <button id="addBtn" class="btn-add" onclick="addData()">➕ Add to Cloud</button>
 </div>
 
 <div class="box">
   <label>Filter by Month</label>
   <input type="month" id="monthFilter" onchange="render()">
-  <button class="btn-export" onclick="exportMonthlyCSV()">📥 Download Selected Month CSV</button>
-  <button class="btn-clear" onclick="clearFilteredMonth()">🗑️ Clear Selected Month Data</button>
+  <button class="btn-export" onclick="exportMonthlyCSV()">📥 Download CSV</button>
 </div>
 
 <div class="box">
   <div class="chart-container"><canvas id="incomeExpenseChart"></canvas></div>
   <div class="chart-container"><canvas id="categoryChart"></canvas></div>
 </div>
+
+<div id="status" class="loading-text">ડેટા લોડ થઈ રહ્યો છે...</div>
 
 <div class="box" style="overflow-x:auto;">
   <table>
@@ -79,52 +82,73 @@
   </table>
 </div>
 
-<div class="box">
-  <button class="btn-backup" onclick="backupData()">☁ Full Backup (.json)</button>
-  <label>Restore:</label>
-  <input type="file" onchange="restoreData(event)">
-</div>
-
 <script>
-let data = JSON.parse(localStorage.getItem("financeData")) || [];
+// --- તમારી Firebase Config ---
+const firebaseConfig = {
+  apiKey: "AIzaSyB36TOfy-NXVSNk_G73...", // મેં ફોટામાંથી લીધેલ છે
+  authDomain: "diary-189a2.firebaseapp.com",
+  projectId: "diary-189a2",
+  storageBucket: "diary-189a2.firebasestorage.app",
+  messagingSenderId: "984176703180",
+  appId: "1:984176703180:web:4434237887754f923be9f5"
+};
+
+// Initialize
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+let data = [];
 document.getElementById('date').valueAsDate = new Date();
 document.getElementById('monthFilter').value = new Date().toISOString().slice(0, 7);
 
-function save() { localStorage.setItem("financeData", JSON.stringify(data)); }
+function checkOther() { 
+  document.getElementById('customType').style.display = (document.getElementById('expenseType').value === "Other") ? "block" : "none"; 
+}
 
-function checkOther() { document.getElementById('customType').style.display = (document.getElementById('expenseType').value === "Other") ? "block" : "none"; }
-
-function addData() {
+// ડેટા ઉમેરવો
+async function addData() {
+  const btn = document.getElementById('addBtn');
   const dateVal = document.getElementById('date').value;
   let typeVal = document.getElementById('expenseType').value;
   if(typeVal === "Other") typeVal = document.getElementById('customType').value || "Other";
 
-  data.push({
-    id: Date.now(),
+  const entry = {
     date: dateVal,
     source: document.getElementById('incomeSource').value || "General",
     amount: Number(document.getElementById('amount').value) || 0,
     expense: Number(document.getElementById('expense').value) || 0,
-    type: typeVal
-  });
-  save(); render();
-  document.getElementById('incomeSource').value = "";
-  document.getElementById('amount').value = "";
-  document.getElementById('expense').value = "";
-}
+    type: typeVal,
+    serverTime: firebase.firestore.FieldValue.serverTimestamp()
+  };
 
-function deleteEntry(id) {
-  if(confirm("Delete this entry?")) { data = data.filter(i => i.id !== id); save(); render(); }
-}
-
-function clearFilteredMonth() {
-  const month = document.getElementById('monthFilter').value;
-  if(!month) return alert("મહિનો પસંદ કરો");
-  if(confirm(month + " નો બધો ડેટા ડિલીટ કરવો છે? (પહેલા CSV ડાઉનલોડ કરી લેવી)")) {
-    data = data.filter(d => !d.date.startsWith(month));
-    save(); render();
+  try {
+    btn.disabled = true;
+    btn.innerText = "સેવિંગ...";
+    await db.collection("finance").add(entry);
+    document.getElementById('incomeSource').value = "";
+    document.getElementById('amount').value = "";
+    document.getElementById('expense').value = "";
+    btn.disabled = false;
+    btn.innerText = "➕ Add to Cloud";
+  } catch (e) {
+    alert("Error: " + e.message);
+    btn.disabled = false;
   }
 }
+
+// ડિલીટ કરવું
+async function deleteEntry(id) {
+  if(confirm("ખરેખર ડિલીટ કરવું છે?")) {
+    await db.collection("finance").doc(id).delete();
+  }
+}
+
+// રીઅલ-ટાઇમ અપડેટ
+db.collection("finance").orderBy("date", "desc").onSnapshot((snapshot) => {
+  data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  document.getElementById('status').innerText = data.length + " એન્ટ્રી મળી";
+  render();
+});
 
 function render() {
   let totalIncome = 0, totalExp = 0, categoryData = {};
@@ -132,9 +156,7 @@ function render() {
   const tableBody = document.getElementById('tableData');
   tableBody.innerHTML = "";
 
-  const sortedData = [...data].sort((a, b) => new Date(b.date) - new Date(a.date));
-
-  sortedData.forEach(d => {
+  data.forEach(d => {
     if(month && !d.date.startsWith(month)) return;
     totalIncome += d.amount; totalExp += d.expense;
     if(d.expense > 0) categoryData[d.type] = (categoryData[d.type] || 0) + d.expense;
@@ -145,7 +167,7 @@ function render() {
       <td style="color:green">${d.amount}</td>
       <td style="color:red">${d.expense}</td>
       <td>${d.type}</td>
-      <td><button class="btn-delete" onclick="deleteEntry(${d.id})">❌</button></td>
+      <td><button class="btn-delete" onclick="deleteEntry('${d.id}')">❌</button></td>
     </tr>`;
   });
 
@@ -168,33 +190,15 @@ function updateCharts(i, e, c) {
 function exportMonthlyCSV() {
   const month = document.getElementById('monthFilter').value;
   const filtered = data.filter(d => d.date.startsWith(month));
-  if(filtered.length === 0) return alert("આ મહિનાનો કોઈ ડેટા નથી!");
-
+  if(filtered.length === 0) return alert("ડેટા નથી!");
   let csv = "\uFEFFDate,Source,Income,Expense,Type\n";
   filtered.forEach(d => { csv += `${d.date},${d.source},${d.amount},${d.expense},${d.type}\n`; });
-  
   let blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   let link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = `Finance_Report_${month}.csv`;
+  link.download = `Report_${month}.csv`;
   link.click();
 }
-
-function backupData() {
-  let blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-  let link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = "Full_Backup_" + new Date().toLocaleDateString() + ".json";
-  link.click();
-}
-
-function restoreData(e) {
-  let file = e.target.files[0];
-  let reader = new FileReader();
-  reader.onload = function(e) { data = JSON.parse(e.target.result); save(); render(); alert("Restored!"); };
-  reader.readAsText(file);
-}
-render();
 </script>
 </body>
 </html>
