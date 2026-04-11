@@ -3,28 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Finance Pro Manager</title>
-  <link rel="manifest" href="manifest.json">
-  
+  <title>My Cloud Diary</title>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-  
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    :root { --primary: #2c3e50; --secondary: #27ae60; --danger: #e74c3c; --info: #3498db; }
-    body { font-family: 'Segoe UI', sans-serif; background:#f4f7f6; padding:10px; color: #333; margin:0; }
-    h2 { text-align: center; color: var(--primary); margin-top: 10px; }
-    .box { background:white; padding:15px; margin-bottom:15px; border-radius:12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-    label { font-weight: bold; display: block; margin-bottom: 5px; font-size: 14px; }
-    input, select { padding:12px; margin-bottom:12px; width:100%; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
-    button { padding:12px; width:100%; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; margin-bottom: 10px; }
+    :root { --primary: #2c3e50; --secondary: #27ae60; --danger: #e74c3c; }
+    body { font-family: sans-serif; background:#f4f7f6; padding:10px; margin:0; }
+    .box { background:white; padding:15px; margin-bottom:15px; border-radius:12px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    input, select, button { padding:12px; margin-bottom:10px; width:100%; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; font-size: 16px; }
+    button { cursor: pointer; font-weight: bold; border: none; }
     .btn-add { background: var(--secondary); color: white; }
-    .btn-delete { background: var(--danger); color: white; padding: 5px 10px; font-size: 12px; width: auto; }
-    .stats { display: flex; justify-content: space-between; text-align: center; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+    .btn-export { background: #3498db; color: white; }
+    .btn-delete { background: var(--danger); color: white; width: auto; padding: 5px 10px; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
     th { background: var(--primary); color: white; }
-    .chart-container { position: relative; height:230px; width:100%; margin-bottom: 20px; }
   </style>
 </head>
 <body>
@@ -32,44 +26,43 @@
 <h2>💰 My Cloud Diary</h2>
 
 <div class="box">
-  <div class="stats">
-    <div><label>Balance</label><h3 style="color:var(--secondary)">₹ <span id="balance">0</span></h3></div>
-    <div><label>Expense</label><h3 style="color:var(--danger)">₹ <span id="totalExpense">0</span></h3></div>
+  <div style="display:flex; justify-content: space-around; text-align:center;">
+    <div>Balance: <h3 id="balance">0</h3></div>
+    <div>Expense: <h3 id="totalExpense">0</h3></div>
   </div>
 </div>
 
 <div class="box">
   <input type="date" id="date">
-  <input type="text" id="source" placeholder="વિગત (દા.ત. પગાર, નાસ્તો)">
-  <input type="number" id="income" placeholder="આવક (In) ₹">
-  <input type="number" id="expense" placeholder="ખર્ચ (Out) ₹">
+  <input type="text" id="source" placeholder="વિગત">
+  <input type="number" id="income" placeholder="આવક (In)">
+  <input type="number" id="expense" placeholder="ખર્ચ (Out)">
   <select id="type">
     <option>General</option><option>Milk</option><option>Petrol</option>
-    <option>Grocery</option><option>Food</option><option>EMI</option><option>Other</option>
+    <option>Grocery</option><option>EMI</option><option>Food</option><option>Other</option>
   </select>
   <button id="addBtn" class="btn-add" onclick="addData()">➕ Add to Cloud</button>
 </div>
 
 <div class="box">
-  <label>મહિનો પસંદ કરો:</label>
   <input type="month" id="monthFilter" onchange="render()">
-  <div class="chart-container"><canvas id="incomeExpenseChart"></canvas></div>
+  <button class="btn-export" onclick="exportCSV()">📥 Download CSV (Excel)</button>
 </div>
 
 <div class="box" style="overflow-x:auto;">
   <table>
-    <thead><tr><th>તારીખ</th><th>વિગત</th><th>In</th><th>Out</th><th>X</th></tr></thead>
+    <thead><tr><th>તારીખ</th><th>વિગત</th><th>In</th><th>Out</th><th>Action</th></tr></thead>
     <tbody id="tableData"></tbody>
   </table>
 </div>
 
 <script>
-// તમારી Firebase વિગતો
+// તમારા નવા પ્રોજેક્ટ ("My diary") ની વિગતો
 const firebaseConfig = {
-  apiKey: "AIzaSyB36TOfy-NXVSNk_G7336TOfy-NXVSNk", 
-  authDomain: "diary-189a2.firebaseapp.com",
-  projectId: "diary-189a2",
-  storageBucket: "diary-189a2.firebasestorage.app",
+  apiKey: "AIzaSyB36TOfy-NXVSNk_G7336TOfy-NXVSNk",
+  authDomain: "my-diary-3a4d6.firebaseapp.com",
+  projectId: "my-diary-3a4d6",
+  storageBucket: "my-diary-3a4d6.firebasestorage.app",
   messagingSenderId: "984176703180",
   appId: "1:984176703180:web:4434237887754f923be9f5"
 };
@@ -81,15 +74,6 @@ let data = [];
 document.getElementById('date').valueAsDate = new Date();
 document.getElementById('monthFilter').value = new Date().toISOString().slice(0, 7);
 
-// ચાર્ટ સેટઅપ
-const ctx = document.getElementById('incomeExpenseChart').getContext('2d');
-let myChart = new Chart(ctx, {
-    type: 'doughnut',
-    data: { labels: ['Income', 'Expense'], datasets: [{ data: [0, 0], backgroundColor: ['#27ae60', '#e74c3c'] }] },
-    options: { maintainAspectRatio: false }
-});
-
-// ડેટા ઉમેરવો
 async function addData() {
   const btn = document.getElementById('addBtn');
   const entry = {
@@ -97,24 +81,21 @@ async function addData() {
     source: document.getElementById('source').value || "General",
     amount: Number(document.getElementById('income').value) || 0,
     expense: Number(document.getElementById('expense').value) || 0,
-    type: document.getElementById('type').value,
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    type: document.getElementById('type').value
   };
-  
-  if(entry.amount === 0 && entry.expense === 0) return alert("રકમ લખો!");
 
   btn.disabled = true;
   btn.innerText = "સેવિંગ...";
-  await db.collection("finance").add(entry);
+  try {
+    await db.collection("finance").add(entry);
+    document.getElementById('income').value = "";
+    document.getElementById('expense').value = "";
+    document.getElementById('source').value = "";
+  } catch(e) { alert("Error: " + e.message); }
   btn.disabled = false;
   btn.innerText = "➕ Add to Cloud";
-  
-  document.getElementById('source').value = "";
-  document.getElementById('income').value = "";
-  document.getElementById('expense').value = "";
 }
 
-// રીઅલ-ટાઇમ લિઝનર
 db.collection("finance").orderBy("date", "desc").onSnapshot(snap => {
   data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   render();
@@ -123,30 +104,27 @@ db.collection("finance").orderBy("date", "desc").onSnapshot(snap => {
 function render() {
   let inTotal = 0, exTotal = 0, html = "";
   const month = document.getElementById('monthFilter').value;
-  
   data.filter(d => d.date.startsWith(month)).forEach(d => {
-    inTotal += d.amount; 
-    exTotal += d.expense;
-    html += `<tr>
-      <td>${d.date.split('-').reverse().join('/')}</td>
-      <td>${d.source}</td>
-      <td style="color:green">${d.amount}</td>
-      <td style="color:red">${d.expense}</td>
-      <td><button class="btn-delete" onclick="deleteDoc('${d.id}')">❌</button></td>
-    </tr>`;
+    inTotal += d.amount; exTotal += d.expense;
+    html += `<tr><td>${d.date}</td><td>${d.source}</td><td>${d.amount}</td><td>${d.expense}</td>
+    <td><button class="btn-delete" onclick="deleteDoc('${d.id}')">❌</button></td></tr>`;
   });
-  
   document.getElementById('tableData').innerHTML = html;
   document.getElementById('balance').innerText = inTotal - exTotal;
   document.getElementById('totalExpense').innerText = exTotal;
-  
-  myChart.data.datasets[0].data = [inTotal, exTotal];
-  myChart.update();
 }
 
-async function deleteDoc(id) { 
-  if(confirm("આ એન્ટ્રી કાઢી નાખવી છે?")) await db.collection("finance").doc(id).delete(); 
+function exportCSV() {
+  let csv = "Date,Source,Income,Expense,Type\n";
+  data.forEach(d => { csv += `${d.date},${d.source},${d.amount},${d.expense},${d.type}\n`; });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Diary_Export.csv';
+  a.click();
 }
+
+async function deleteDoc(id) { if(confirm("Delete?")) await db.collection("finance").doc(id).delete(); }
 </script>
 </body>
 </html>
